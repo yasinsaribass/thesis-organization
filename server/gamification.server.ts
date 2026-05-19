@@ -4,9 +4,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { XP_RULES, LEVELS, BADGES, getLevelFromXP } from "@/lib/gamification";
 
-// ──────────────────────────────────────────────
-// QUERIES
-// ──────────────────────────────────────────────
 
 /** Get student gamification data (XP, level, streak, badges) */
 export async function getStudentGamification() {
@@ -125,9 +122,6 @@ export async function getLeaderboard() {
     return { leaderboard };
 }
 
-// ──────────────────────────────────────────────
-// MUTATIONS / ENGINE
-// ──────────────────────────────────────────────
 
 /** Award XP to a student and check for level-up and badges */
 export async function awardXP(studentId: string, amount: number) {

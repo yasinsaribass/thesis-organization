@@ -42,7 +42,7 @@ export async function updateSession(request: NextRequest) {
         }
     );
 
-    // Kullanıcı oturumunu kontrol et
+    // Check user session
     const {
         data: { user },
     } = await supabase.auth.getUser();
@@ -55,7 +55,7 @@ export async function updateSession(request: NextRequest) {
     const isDashboardRoot = path === '/dashboard';
     const isProtectedRoute = isRouteMatch(PROTECTED_ROUTES) || isStudentRoute || isSupervisorRoute;
 
-    // 1. Giriş Kontrolü: Korunmuş bir rotaya giriliyorsa ve user yoksa login'e at
+    // 1. Redirect unauthenticated access to login
     if (isProtectedRoute && !user) {
         const url = request.nextUrl.clone();
         url.pathname = LOGIN_ROUTE;
@@ -63,7 +63,7 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url);
     }
 
-    // 2. Auth Sayfaları Kontrolü: Zaten giriş yapmış birisi auth sayfalarına (/auth/login vs.) girmeye çalışırsa
+    // 2. Prevent logged-in users from auth pages
     if (user && path.startsWith('/auth')) {
         // Log out / signout endpoints may still be valid, but typical login/signup are restricted.
         // Assuming /auth/login, /auth/sign-up, /auth/forgot-password are blocked
@@ -74,7 +74,7 @@ export async function updateSession(request: NextRequest) {
         }
     }
 
-    // 3. Rol Kontrolü (RBAC): Eğer korumalı bir rotadaysa rolü kontrol et
+    // 3. Enforce route role checks
     if (user && (isStudentRoute || isSupervisorRoute || isDashboardRoot)) {
         const { data: profile } = await supabase
             .from("user_profiles")
@@ -92,7 +92,7 @@ export async function updateSession(request: NextRequest) {
             }
         }
 
-        // Student rotasına Supervisor girmeye çalışırsa veya tersi:
+        // Prevent role mismatch access
         if (isStudentRoute && role !== 'STUDENT') {
             return NextResponse.redirect(new URL('/', request.url)); // Yetkisizse ana sayfaya
         }

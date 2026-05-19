@@ -289,7 +289,7 @@ export async function getStudentDetails(studentId: string) {
             if (t.suggestion_status === null) return false;
             if (t.parent_task_id === null) return true;
 
-            // Subtask ise: parent'ı da şu an listede mi (yani beraber mi önerildiler?)
+            // If subtask, check whether its parent is also pending
             const parent = tasks.find(p => p.id === t.parent_task_id);
             return parent?.suggestion_status !== 'PENDING';
         });

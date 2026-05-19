@@ -28,7 +28,7 @@ const updateMainTaskSchema = mainTaskSchema.partial().extend({
 // QUERIES
 // ──────────────────────────────────────────────
 
-/** Oturum açmış öğrencinin tezini ve student kaydını getirir */
+/** Returns current student's thesis and student record */
 export async function getStudentDashboardData() {
     const supabase = await createSupabaseServerClient();
 
@@ -38,7 +38,7 @@ export async function getStudentDashboardData() {
 
     if (!user) return { error: "Not authenticated" };
 
-    // Student kaydını bul
+    // Find student record
     const { data: student } = await supabase
         .from("students")
         .select("id, department, student_number, supervisor_id")
@@ -47,7 +47,7 @@ export async function getStudentDashboardData() {
 
     if (!student) return { error: "Student profile not found" };
 
-    // Öğrencinin tezini bul
+    // Find student's thesis
     const { data: thesis } = await supabase
         .from("theses")
         .select("id, title, status, visible_to_supervisor_default")
@@ -58,7 +58,7 @@ export async function getStudentDashboardData() {
 
     if (!thesis) return { student, thesis: null, mainTasks: [], supervisorTasks: [], stats: { completed: 0, ongoing: 0, suggestions: 0 } };
 
-    // Ana görevler: parent_task_id NULL + (öğrencinin oluşturduğu VEYA kabul edilmiş öneri)
+    // Main tasks: no parent and student-created or accepted suggestions
     const { data: mainTasks } = await supabase
         .from("tasks")
         .select("id, title, description, status, priority, created_by, due_date, updated_at, suggestion_status, supervisor_feedback, feedback_updated_at")
@@ -67,9 +67,9 @@ export async function getStudentDashboardData() {
         .or("suggestion_status.is.null,suggestion_status.eq.ACCEPTED")
         .order("created_at", { ascending: false });
 
-    // Danışmanın önerdiği bekleyen görevler
-    // Önemli: Eğer bir Main Task bekliyorsa, onun alt görevlerini ayrıca listede göstermiyoruz.
-    // Sadece "bağımsız" önerilenleri (Main task'lar veya zaten kabul edilmiş bir task'ın altına eklenen yeni subtask'lar) gösteriyoruz.
+    // Pending supervisor suggestions
+    // Skip subtask suggestions when parent main task is still pending
+    // Only show independent suggestions
     const { data: allPending } = await supabase
         .from("tasks")
         .select("id, title, description, status, priority, due_date, parent_task_id")
@@ -79,15 +79,15 @@ export async function getStudentDashboardData() {
 
     const pendingTasks = allPending || [];
 
-    // Filtreleme: parent_task_id null olanlar (Main) VEYA parent'ı PENDING olmayanlar (Bağımsız Subtask)
+    // Keep main suggestions or subtask suggestions whose parent is not pending
     const supervisorTasks = pendingTasks.filter(t => {
         if (!t.parent_task_id) return true;
-        // Eğer parent_id varsa, o parent'ın da pending listesinde olup olmadığına bakıyoruz
+        // If subtask has parent, check if parent is also pending
         const isParentAlsoPending = pendingTasks.some(p => p.id === t.parent_task_id);
         return !isParentAlsoPending;
     });
 
-    // İstatistikler (Tüm görevleri ve alt görevleri dahil ederek gerçek ilerlemeyi bul)
+    // Count actual task progress including subtasks
     const { count: completedCount } = await supabase
         .from("tasks")
         .select("*", { count: "exact", head: true })
@@ -116,7 +116,7 @@ export async function getStudentDashboardData() {
     };
 }
 
-/** Bir task'ın detayını getirir (alt görevleriyle birlikte) */
+/** Returns task detail with subtasks */
 export async function getTaskDetail(taskId: string) {
     const supabase = await createSupabaseServerClient();
 
@@ -154,7 +154,7 @@ export async function getTaskDetail(taskId: string) {
     return { task, subtasks: subtasks ?? [], isLastGlobalTask };
 }
 
-/** Bütün görevleri (Ana ve Alt) hiyerarşik veya düz bir liste olarak tez bazında getirir */
+/** Returns all thesis tasks */
 export async function getAllThesisTasks() {
     const supabase = await createSupabaseServerClient();
 
@@ -196,7 +196,7 @@ export async function getAllThesisTasks() {
 // MUTATIONS
 // ──────────────────────────────────────────────
 
-/** Yeni bir ana task oluşturur ve varsa alt görevlerini ekler */
+/** Creates main task and optional subtasks */
 export async function createMainTask(data: z.infer<typeof mainTaskSchema>) {
     const supabase = await createSupabaseServerClient();
 
@@ -208,7 +208,7 @@ export async function createMainTask(data: z.infer<typeof mainTaskSchema>) {
     const parsed = mainTaskSchema.safeParse(data);
     if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-    // 1. Ana taskı oluştur
+    // 1. Create main task
     const { data: mainTask, error: mainError } = await supabase
         .from("tasks")
         .insert({
@@ -225,7 +225,7 @@ export async function createMainTask(data: z.infer<typeof mainTaskSchema>) {
 
     if (mainError) return { error: mainError.message };
 
-    // 2. Varsa alt görevleri oluştur
+    // 2. Create subtasks if any
     if (parsed.data.subtasks && parsed.data.subtasks.length > 0) {
         const subtasksToInsert = parsed.data.subtasks.map(s => ({
             title: s.title,
@@ -247,7 +247,7 @@ export async function createMainTask(data: z.infer<typeof mainTaskSchema>) {
     return { success: true };
 }
 
-/** Yeni bir alt görev (subtask) oluşturur */
+/** Creates a new subtask */
 export async function createSubtask(data: {
     title: string;
     description?: string | null;
@@ -281,7 +281,7 @@ export async function createSubtask(data: {
     return { success: true, task: newTask };
 }
 
-/** Mevcut bir task'ı günceller (ve alt görevlerini senkronize eder) */
+/** Updates a task and syncs subtasks */
 export async function updateMainTask(data: z.infer<typeof updateMainTaskSchema>) {
     const supabase = await createSupabaseServerClient();
 
@@ -293,7 +293,7 @@ export async function updateMainTask(data: z.infer<typeof updateMainTaskSchema>)
 
     const { id, subtasks, ...mainFields } = parsed.data;
 
-    // 1. Ana görevi güncelle
+    // 1. Update main task
     const { error: mainUpdateError } = await supabase
         .from("tasks")
         .update({ ...mainFields, updated_at: new Date().toISOString() })
@@ -301,9 +301,9 @@ export async function updateMainTask(data: z.infer<typeof updateMainTaskSchema>)
 
     if (mainUpdateError) return { error: mainUpdateError.message };
 
-    // 2. Alt görevleri senkronize et
+    // 2. Sync subtasks
     if (subtasks) {
-        // Mevcut alt görevleri veritabanından çek (silinenleri belirlemek için)
+        // Get existing subtasks from DB
         const { data: existingSubtasks } = await supabase
             .from("tasks")
             .select("id")
@@ -312,16 +312,16 @@ export async function updateMainTask(data: z.infer<typeof updateMainTaskSchema>)
         const existingIds = existingSubtasks?.map(s => s.id) || [];
         const incomingIds = subtasks.filter(s => s.id).map(s => s.id!);
 
-        // a) Silinenleri sil
+        // a) Delete removed subtasks
         const idsToDelete = existingIds.filter(eid => !incomingIds.includes(eid));
         if (idsToDelete.length > 0) {
             await supabase.from("tasks").delete().in("id", idsToDelete);
         }
 
-        // b) Güncellenecek ve yeni eklenecekleri işle
+        // b) Handle updates and new subtasks
         for (const s of subtasks) {
             if (s.id) {
-                // Güncelle
+                // Update
                 await supabase.from("tasks").update({
                     title: s.title,
                     description: s.description,
@@ -330,9 +330,9 @@ export async function updateMainTask(data: z.infer<typeof updateMainTaskSchema>)
                     updated_at: new Date().toISOString()
                 }).eq("id", s.id);
             } else {
-                // Ekle (tez_id ve created_by ana görevden alınabilir veya state'ten gelebilir)
-                // Burada ana görevin thesis_id'sini bulmamız gerekebilir eğer data içinde yoksa.
-                // Şimdilik schema'da thesis_id zorunlu (partial olsa da).
+                // Insert new subtask
+                // thesis_id must be present
+                // Schema requires thesis_id
                 await supabase.from("tasks").insert({
                     title: s.title,
                     description: s.description,
@@ -353,7 +353,7 @@ export async function updateMainTask(data: z.infer<typeof updateMainTaskSchema>)
     return { success: true };
 }
 
-/** Bir task'ı siler (main task ise önce alt görevleri siler) */
+/** Deletes a task and its subtasks */
 export async function deleteTask(taskId: string) {
     const supabase = await createSupabaseServerClient();
 
@@ -375,7 +375,7 @@ export async function deleteTask(taskId: string) {
     return { success: true };
 }
 
-/** Task durumunu günceller (Kanban sürükle-bırak için) */
+/** Updates task status */
 export async function updateTaskStatus(taskId: string, newStatus: string) {
     const supabase = await createSupabaseServerClient();
 

@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Thesis Management Application
 
-## Getting Started
+This repository contains a Next.js application for thesis task management, including role-based dashboards for students and supervisors, task tracking, suggestions, and gamified progress.
 
-First, run the development server:
+## Overview
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The application is built on Next.js with server-side Supabase integration. It supports authenticated access, role-based routing, and task management features designed around thesis workflows.
+
+## System Architecture
+
+```mermaid
+flowchart LR
+    A[Browser Client] -->|Requests| B[Next.js App]
+    B --> C[App Routes / UI Components]
+    B --> D[Server Actions]
+    D --> E[Supabase Backend]
+    E --> F[Auth & Session]
+    E --> G[Tasks / Thesis Data]
+    E --> H[Profiles / Notifications]
+    B --> I[Middleware]
+    I -->|Validates| F
+    I -->|Enforces| J[Route Permissions]
+    subgraph Client
+      A
+      C
+    end
+    subgraph Server
+      B
+      D
+      I
+    end
+    subgraph Data
+      E
+      F
+      G
+      H
+      J
+    end
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The application uses `app` routes for rendering the interface and `server` modules for business logic and data operations. Authentication and session handling are provided through Supabase, while middleware enforces route access and role checks.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Codebase Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `app/` - Next.js application routes, page layouts, and protected dashboard areas.
+- `components/` - Reusable UI components organized by feature and role.
+- `lib/` - Shared utilities, route definitions, translations, and Supabase client setup.
+- `server/` - Server-side modules that encapsulate database interactions, task operations, supervision, notifications, and gamification.
+- `schemas/` - Zod validation schemas for data shape enforcement.
+- `types/` - Application type definitions and database types.
+- `public/` - Static assets used in the application.
 
-## Learn More
+## Key Features
 
-To learn more about Next.js, take a look at the following resources:
+- Role-based access control with separate student and supervisor dashboards.
+- Supabase authentication, including login, sign-up, password reset, and session validation.
+- Hierarchical task management with main tasks, subtasks, and suggestion handling.
+- Dynamic task status updates with Kanban-style workflow support.
+- Supervisor suggestion review and acceptance flow.
+- Gamification integration for task completion and progress tracking.
+- Responsive interface components and modular UI design.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Installation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Install dependencies and start the development server:
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The application runs at `http://localhost:3000` by default.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Build and Deployment
+
+Build for production and run the optimized app:
+
+```bash
+npm run build
+npm start
+```
+
+The project is compatible with standard Next.js deployment environments.
+
+## Notes
+
+- Supabase configuration is expected in environment variables.
+- Route protection and user role checks are managed in `lib/supabase/middleware.ts`.
+- Server-side task operations are implemented in `server/tasks.server.ts`, `server/supervisor.server.ts`, and related server modules.
